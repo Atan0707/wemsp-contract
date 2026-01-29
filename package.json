@@ -1,0 +1,24 @@
+{
+  "name": "wemsp-contract",
+  "version": "1.0.0",
+  "type": "module",
+  "packageManager": "pnpm@10.27.0+sha512.72d699da16b1179c14ba9e64dc71c9a40988cbdc65c264cb0e489db7de917f20dcf4d64d8723625f2969ba52d4b7e2a1170682d9ac2a5dcaeaab732b7e16f04a",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^4.0.4",
+    "@nomicfoundation/hardhat-ignition": "^3.0.7",
+    "@nomicfoundation/hardhat-toolbox-mocha-ethers": "^3.0.2",
+    "@types/chai": "^4.3.20",
+    "@types/chai-as-promised": "^8.0.2",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.19.7",
+    "chai": "^5.3.3",
+    "ethers": "^6.16.0",
+    "forge-std": "github:foundry-rs/forge-std#v1.9.4",
+    "hardhat": "^3.1.5",
+    "mocha": "^11.7.5",
+    "typescript": "~5.8.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0"
+  }
+}
