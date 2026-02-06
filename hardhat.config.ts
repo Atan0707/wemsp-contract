@@ -47,6 +47,12 @@ export default defineConfig({
       chainType: "l1",
       url: configVariable("SCROLL_SEPOLIA_RPC_URL"),
       accounts: [configVariable("PRIVATE_KEY")],
+    },
+    baseSepolia: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("BASE_SEPOLIA_RPC_URL"),
+      accounts: [configVariable("PRIVATE_KEY")],
     }
   },
 });
