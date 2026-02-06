@@ -16,7 +16,7 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
 
     // Agreement data structure (without mappings for return compatibility)
     struct AgreementData {
-        string visibleId;           // Human-readable visible ID from database
+        string agreementId;         // Human-readable agreement ID from database
         string[] beneficiaryIds;    // Database beneficiary IDs (not wallet addresses)
         uint256 beneficiaryCount;   // Total number of beneficiaries
         uint256 signedCount;        // Number of beneficiaries who have signed
@@ -34,13 +34,13 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
     mapping(uint256 => mapping(string => bool)) private _beneficiaryHasSigned;
     mapping(uint256 => mapping(string => uint256)) private _beneficiarySignedAt;
     
-    // Mapping from visibleId to tokenId for lookup
-    mapping(string => uint256) private _visibleIdToTokenId;
+    // Mapping from agreementId to tokenId for lookup
+    mapping(string => uint256) private _agreementIdToTokenId;
 
     // Events
     event AgreementMinted(
         uint256 indexed tokenId,
-        string visibleId,
+        string agreementId,
         string metadataUri,
         uint256 beneficiaryCount
     );
@@ -52,6 +52,7 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
     );
     event WitnessSigned(uint256 indexed tokenId, uint256 timestamp);
     event AgreementFinalized(uint256 indexed tokenId, uint256 timestamp);
+    event AgreementUpdated(uint256 indexed tokenId, string newMetadataUri, uint256 timestamp);
 
     // Errors
     error AgreementNotFound(uint256 tokenId);
@@ -60,26 +61,26 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
     error BeneficiaryAlreadySigned(uint256 tokenId, string beneficiaryId);
     error BeneficiaryNotFound(uint256 tokenId, string beneficiaryId);
     error WitnessAlreadySigned(uint256 tokenId);
-    error VisibleIdAlreadyExists(string visibleId);
+    error AgreementIdAlreadyExists(string agreementId);
     error InvalidBeneficiaryCount();
 
-    constructor() ERC721("AgreementNFT", "AGREE") Ownable(msg.sender) {}
+    constructor() ERC721("WEMSP Agreement", "WEMSP") Ownable(msg.sender) {}
 
     /**
      * @dev Mint a new agreement NFT
-     * @param visibleId Human-readable ID from database
+     * @param agreementId Human-readable ID from database
      * @param metadataUri S3 URI containing agreement JSON metadata
      * @param beneficiaryIds Array of database beneficiary IDs
      * @return tokenId The newly minted token ID
      */
     function mintAgreement(
-        string calldata visibleId,
+        string calldata agreementId,
         string calldata metadataUri,
         string[] calldata beneficiaryIds
     ) external onlyOwner nonReentrant returns (uint256) {
-        // Check visibleId doesn't already exist
-        if (_visibleIdToTokenId[visibleId] != 0) {
-            revert VisibleIdAlreadyExists(visibleId);
+        // Check agreementId doesn't already exist
+        if (_agreementIdToTokenId[agreementId] != 0) {
+            revert AgreementIdAlreadyExists(agreementId);
         }
         
         // Validate beneficiary count
@@ -96,7 +97,7 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
 
         // Initialize agreement data
         AgreementData storage agreement = _agreements[newTokenId];
-        agreement.visibleId = visibleId;
+        agreement.agreementId = agreementId;
         agreement.beneficiaryIds = beneficiaryIds;
         agreement.beneficiaryCount = beneficiaryIds.length;
         agreement.signedCount = 0;
@@ -106,10 +107,10 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
         agreement.witnessedAt = 0;
         agreement.isFinalized = false;
 
-        // Map visibleId to tokenId for lookup
-        _visibleIdToTokenId[visibleId] = newTokenId;
+        // Map agreementId to tokenId for lookup
+        _agreementIdToTokenId[agreementId] = newTokenId;
 
-        emit AgreementMinted(newTokenId, visibleId, metadataUri, beneficiaryIds.length);
+        emit AgreementMinted(newTokenId, agreementId, metadataUri, beneficiaryIds.length);
 
         return newTokenId;
     }
@@ -218,6 +219,46 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
         emit AgreementFinalized(tokenId, block.timestamp);
     }
 
+    /**
+     * @dev Update agreement URI and reset all signatures
+     * @param tokenId The token ID of the agreement
+     * @param newMetadataUri New S3 URI containing updated agreement JSON metadata
+     * @notice This will reset all signatures - parties must sign again from the beginning
+     */
+    function updateAgreement(
+        uint256 tokenId,
+        string calldata newMetadataUri
+    ) external onlyOwner nonReentrant {
+        _requireAgreementExists(tokenId);
+        
+        AgreementData storage agreement = _agreements[tokenId];
+        
+        if (agreement.isFinalized) {
+            revert AgreementAlreadyFinalized(tokenId);
+        }
+
+        // Update the token URI
+        _setTokenURI(tokenId, newMetadataUri);
+
+        // Reset owner signature
+        agreement.ownerSigned = false;
+        agreement.ownerSignedAt = 0;
+
+        // Reset witness signature
+        agreement.witnessSigned = false;
+        agreement.witnessedAt = 0;
+
+        // Reset all beneficiary signatures
+        for (uint256 i = 0; i < agreement.beneficiaryIds.length; i++) {
+            string memory beneficiaryId = agreement.beneficiaryIds[i];
+            _beneficiaryHasSigned[tokenId][beneficiaryId] = false;
+            _beneficiarySignedAt[tokenId][beneficiaryId] = 0;
+        }
+        agreement.signedCount = 0;
+
+        emit AgreementUpdated(tokenId, newMetadataUri, block.timestamp);
+    }
+
     // ============ View Functions ============
 
     /**
@@ -231,12 +272,12 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Get token ID by visible ID
-     * @param visibleId The human-readable visible ID
+     * @dev Get token ID by agreement ID
+     * @param agreementId The human-readable agreement ID
      * @return tokenId The token ID (0 if not found)
      */
-    function getTokenIdByVisibleId(string calldata visibleId) external view returns (uint256) {
-        return _visibleIdToTokenId[visibleId];
+    function getTokenIdByAgreementId(string calldata agreementId) external view returns (uint256) {
+        return _agreementIdToTokenId[agreementId];
     }
 
     /**
