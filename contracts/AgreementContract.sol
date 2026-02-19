@@ -33,6 +33,7 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
     // Separate mappings for beneficiary signatures (can't have mapping in struct)
     mapping(uint256 => mapping(string => bool)) private _beneficiaryHasSigned;
     mapping(uint256 => mapping(string => uint256)) private _beneficiarySignedAt;
+    mapping(uint256 => mapping(string => bool)) private _isBeneficiary;
     
     // Mapping from agreementId to tokenId for lookup
     mapping(string => uint256) private _agreementIdToTokenId;
@@ -63,6 +64,11 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
     error WitnessAlreadySigned(uint256 tokenId);
     error AgreementIdAlreadyExists(string agreementId);
     error InvalidBeneficiaryCount();
+    error TooManyBeneficiaries(uint256 provided, uint256 maxAllowed);
+    error DuplicateBeneficiaryId(string beneficiaryId);
+    error AgreementNotFullySigned(uint256 tokenId);
+
+    uint256 public constant MAX_BENEFICIARIES = 100;
 
     constructor() ERC721("WEMSP Agreement", "WEMSP") Ownable(msg.sender) {}
 
@@ -82,14 +88,26 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
         if (_agreementIdToTokenId[agreementId] != 0) {
             revert AgreementIdAlreadyExists(agreementId);
         }
-        
+
+        _tokenIds++;
+        uint256 newTokenId = _tokenIds;
+
         // Validate beneficiary count
         if (beneficiaryIds.length == 0) {
             revert InvalidBeneficiaryCount();
         }
+        if (beneficiaryIds.length > MAX_BENEFICIARIES) {
+            revert TooManyBeneficiaries(beneficiaryIds.length, MAX_BENEFICIARIES);
+        }
 
-        _tokenIds++;
-        uint256 newTokenId = _tokenIds;
+        // Validate beneficiary list and index members for O(1) signature checks
+        for (uint256 i = 0; i < beneficiaryIds.length; i++) {
+            string calldata beneficiaryId = beneficiaryIds[i];
+            if (_isBeneficiary[newTokenId][beneficiaryId]) {
+                revert DuplicateBeneficiaryId(beneficiaryId);
+            }
+            _isBeneficiary[newTokenId][beneficiaryId] = true;
+        }
 
         // Mint NFT to contract owner (backend wallet)
         _safeMint(msg.sender, newTokenId);
@@ -160,14 +178,7 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
         }
         
         // Verify beneficiary is part of this agreement
-        bool found = false;
-        for (uint256 i = 0; i < agreement.beneficiaryIds.length; i++) {
-            if (keccak256(bytes(agreement.beneficiaryIds[i])) == keccak256(bytes(beneficiaryId))) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
+        if (!_isBeneficiary[tokenId][beneficiaryId]) {
             revert BeneficiaryNotFound(tokenId, beneficiaryId);
         }
 
@@ -212,6 +223,13 @@ contract AgreementContract is ERC721URIStorage, Ownable, ReentrancyGuard {
         
         if (agreement.isFinalized) {
             revert AgreementAlreadyFinalized(tokenId);
+        }
+        if (
+            !agreement.ownerSigned ||
+            !agreement.witnessSigned ||
+            agreement.signedCount != agreement.beneficiaryCount
+        ) {
+            revert AgreementNotFullySigned(tokenId);
         }
 
         agreement.isFinalized = true;
